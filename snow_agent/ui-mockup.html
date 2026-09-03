@@ -1,0 +1,511 @@
+<title>Blast Radius — ServiceNow Console</title>
+<style>
+  :root {
+    --bg: #08090b; --surface: #15171b; --surface-2: #1c1f24; --border: #2a2d33;
+    --text: #f2f1ee; --text-2: #a3a8b0; --text-3: #6b707a;
+    --accent: #e5493a; --accent-2: #ff7a5c; --accent-wash: rgba(229, 73, 58, 0.15);
+    --amber: #e0ab4a; --amber-wash: rgba(224, 171, 74, 0.15);
+    --blue: #5b9bd5; --blue-wash: rgba(91, 155, 213, 0.15);
+    --violet: #a97fe0; --violet-wash: rgba(169, 127, 224, 0.15);
+    --good: #43c08a; --good-wash: rgba(67, 192, 138, 0.14);
+    --shadow: 0 24px 60px -28px rgba(0,0,0,0.75);
+    --serif: Georgia, "Iowan Old Style", "Palatino Linotype", ui-serif, serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  }
+  [data-theme="light"] {
+    --bg: #f3f1ec; --surface: #ffffff; --surface-2: #eeebe3; --border: #ddd7ca;
+    --text: #1a1917; --text-2: #5c584f; --text-3: #8c8778;
+    --accent: #c8351f; --accent-2: #e2472e; --accent-wash: rgba(200, 53, 31, 0.10);
+    --amber: #a9740a; --amber-wash: rgba(169, 116, 10, 0.12);
+    --blue: #2f6fb0; --blue-wash: rgba(47, 111, 176, 0.10);
+    --violet: #7a54c4; --violet-wash: rgba(122, 84, 196, 0.10);
+    --good: #1f8a5c; --good-wash: rgba(31, 138, 92, 0.10);
+    --shadow: 0 20px 45px -25px rgba(30, 20, 10, 0.3);
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f3f1ec; --surface: #ffffff; --surface-2: #eeebe3; --border: #ddd7ca;
+      --text: #1a1917; --text-2: #5c584f; --text-3: #8c8778;
+      --accent: #c8351f; --accent-2: #e2472e; --accent-wash: rgba(200, 53, 31, 0.10);
+      --amber: #a9740a; --amber-wash: rgba(169, 116, 10, 0.12);
+      --blue: #2f6fb0; --blue-wash: rgba(47, 111, 176, 0.10);
+      --violet: #7a54c4; --violet-wash: rgba(122, 84, 196, 0.10);
+      --good: #1f8a5c; --good-wash: rgba(31, 138, 92, 0.10);
+      --shadow: 0 20px 45px -25px rgba(30, 20, 10, 0.3);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); -webkit-font-smoothing: antialiased; overflow: hidden; }
+  code, .mono { font-family: var(--mono); }
+
+  .shell { display: flex; flex-direction: column; height: 100vh; }
+
+  .topbar { flex: 0 0 auto; height: 62px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border-bottom: 1px solid var(--border); background: var(--surface); gap: 16px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-family: var(--serif); font-weight: 700; font-size: 16px; white-space: nowrap; }
+  @media (prefers-reduced-motion: no-preference) { .bp { animation: bpulse 2.4s ease-out infinite; transform-origin: center; } .pulse { animation: pulse 2.6s ease-out infinite; transform-origin: center; } }
+  @keyframes bpulse { 0% { transform: scale(1); opacity: .9; } 100% { transform: scale(3.2); opacity: 0; } }
+  @keyframes pulse { 0% { transform: scale(1); opacity: .9; } 100% { transform: scale(9); opacity: 0; } }
+
+  .scenario-switch { display: flex; gap: 4px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 3px; }
+  .scn { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 7px 12px; border-radius: 9px; border: none; background: transparent; color: var(--text-3); cursor: pointer; white-space: nowrap; }
+  .scn.active { background: var(--accent-wash); color: var(--accent-2); }
+  .topbar-right { display: flex; align-items: center; gap: 10px; }
+  .status-pill { font-family: var(--mono); font-size: 10px; color: var(--text-3); border: 1px solid var(--border); padding: 6px 10px; border-radius: 999px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .status-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 3px var(--amber-wash); }
+  .theme-btn { width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+  .main { flex: 1 1 auto; display: grid; grid-template-columns: 280px 1fr 340px; min-height: 0; }
+  @media (max-width: 1100px) { .main { grid-template-columns: 1fr; overflow-y: auto; } }
+
+  .pane { overflow-y: auto; padding: 16px; }
+  .pane.left { border-right: 1px solid var(--border); background: var(--surface); }
+  .pane.right { border-left: 1px solid var(--border); background: var(--surface); }
+  .pane.center { display: flex; flex-direction: column; }
+
+  .card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  .card-label { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); margin-bottom: 8px; }
+  .inc-number { font-family: var(--mono); font-size: 12px; color: var(--accent-2); font-weight: 700; }
+  .inc-title { font-family: var(--serif); font-size: 15px; font-weight: 700; margin: 4px 0 10px; line-height: 1.3; }
+  .badge { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 9.5px; font-weight: 700; padding: 3px 8px; border-radius: 999px; text-transform: uppercase; background: var(--accent-wash); color: var(--accent-2); }
+  .kv { display: flex; justify-content: space-between; font-size: 11.5px; padding: 6px 0; border-top: 1px solid var(--border); }
+  .kv:first-of-type { border-top: none; }
+  .kv .k { color: var(--text-3); }
+  .kv .v { color: var(--text); font-weight: 600; text-align: right; }
+
+  .src-item { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-2); padding: 5px 0; }
+  .src-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good); flex-shrink: 0; }
+
+  /* ---- Radial canvas ---- */
+  .radial-wrap { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; position: relative; background-image: radial-gradient(var(--border) 1px, transparent 1px); background-size: 26px 26px; }
+  .legend { position: absolute; top: 14px; left: 14px; display: flex; gap: 14px; font-family: var(--mono); font-size: 10px; color: var(--text-3); background: var(--surface); border: 1px solid var(--border); padding: 8px 12px; border-radius: 10px; }
+  .legend span { display: flex; align-items: center; gap: 5px; }
+  .legend i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+  .gnode circle.dot { stroke: var(--surface); stroke-width: 3; cursor: pointer; transition: filter .15s; }
+  .gnode:hover circle.dot { filter: brightness(1.2); }
+  .gnode text.lbl { font-family: var(--mono); font-size: 9px; fill: var(--text-2); text-anchor: middle; pointer-events: none; }
+  .gnode text.sub { font-family: var(--mono); font-size: 7.5px; fill: var(--text-3); text-anchor: middle; pointer-events: none; }
+  .excl-x { stroke: var(--text-3); stroke-width: 1.4; opacity: 0.6; }
+
+  /* ---- Bottom bar ---- */
+  .bottom { flex: 0 0 auto; border-top: 1px solid var(--border); padding: 12px 16px; display: grid; grid-template-columns: 1fr 1fr auto; gap: 16px; align-items: start; background: var(--surface); }
+  @media (max-width: 900px) { .bottom { grid-template-columns: 1fr; } }
+  .steps { display: flex; gap: 4px; flex-wrap: wrap; }
+  .step-chip { font-family: var(--mono); font-size: 9.5px; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-3); white-space: nowrap; }
+  .step-chip.done { background: var(--good-wash); color: var(--good); border-color: transparent; }
+  .step-chip.active { background: var(--accent-wash); color: var(--accent-2); border-color: transparent; }
+  .log { font-family: var(--mono); font-size: 10.5px; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px; height: 68px; overflow-y: auto; line-height: 1.6; }
+  .log .t { color: var(--text-3); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; }
+  .btn { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 9px 14px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); cursor: pointer; white-space: nowrap; }
+  .btn.primary { background: var(--accent); color: #fff; border: none; }
+  .btn.ghost { background: transparent; }
+
+  /* ---- Assessment panel (right) ---- */
+  .sev-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .sev-badge { font-family: var(--mono); font-weight: 700; font-size: 11px; padding: 5px 10px; border-radius: 999px; background: var(--accent-wash); color: var(--accent-2); }
+  .conf-track { height: 7px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); overflow: hidden; margin: 6px 0 14px; }
+  .conf-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+  .summary-text { font-size: 12px; color: var(--text-2); line-height: 1.55; margin-bottom: 14px; }
+  .match-item { background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; margin-bottom: 7px; }
+  .match-head { display: flex; justify-content: space-between; font-size: 11.5px; font-weight: 700; }
+  .match-head .sc { font-family: var(--mono); color: var(--accent-2); }
+  .match-desc { font-size: 11px; color: var(--text-2); margin-top: 3px; }
+  .match-reasons { font-size: 10px; color: var(--text-3); margin-top: 4px; }
+  .excl-item { border-left: 3px solid var(--text-3); }
+  .excl-item .match-head { color: var(--text-3); text-decoration: line-through; }
+
+  /* ---- Chat ---- */
+  .chat-btn { position: fixed; right: 20px; bottom: 20px; z-index: 20; font-family: var(--mono); font-size: 12px; font-weight: 700; padding: 12px 18px; border-radius: 999px; border: none; background: var(--accent); color: #fff; cursor: pointer; box-shadow: var(--shadow); display: flex; align-items: center; gap: 8px; }
+  .chat-panel { position: fixed; right: 20px; bottom: 76px; width: 320px; max-height: 420px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); z-index: 21; display: none; flex-direction: column; overflow: hidden; }
+  .chat-panel.open { display: flex; }
+  .chat-head { padding: 12px 14px; border-bottom: 1px solid var(--border); font-weight: 700; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
+  .chat-head button { background: none; border: none; color: var(--text-3); cursor: pointer; font-size: 16px; }
+  .chat-msgs { flex: 1; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .chat-msg { font-size: 11.5px; background: var(--surface-2); border-radius: 8px; padding: 8px 10px; line-height: 1.4; }
+  .chat-msg.user { background: var(--accent-wash); margin-left: 20%; }
+  .chat-quick { display: flex; gap: 6px; padding: 0 12px 10px; flex-wrap: wrap; }
+  .chat-quick button { font-family: var(--mono); font-size: 9.5px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); padding: 5px 8px; border-radius: 999px; cursor: pointer; }
+  .chat-input { display: flex; border-top: 1px solid var(--border); }
+  .chat-input input { flex: 1; border: none; background: transparent; padding: 10px 12px; color: var(--text); font-size: 12px; outline: none; }
+  .chat-input button { border: none; background: none; color: var(--accent-2); padding: 0 14px; cursor: pointer; font-weight: 700; }
+</style>
+
+<div class="shell">
+  <div class="topbar">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 26 26">
+        <circle cx="13" cy="13" r="11" stroke="var(--border)" stroke-width="1" fill="none"/>
+        <circle cx="13" cy="13" r="6.5" stroke="var(--accent-wash)" stroke-width="1.3" fill="none"/>
+        <circle class="bp" cx="13" cy="13" r="2.4" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <circle cx="13" cy="13" r="2.2" fill="var(--accent)"/>
+      </svg>
+      Blast Radius — ServiceNow
+    </div>
+    <div class="scenario-switch" id="scenario-switch"></div>
+    <div class="topbar-right">
+      <span class="status-pill">Advisory only · no auto-actions</span>
+      <button class="theme-btn" id="theme-btn" title="Toggle theme">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="pane left" id="left-pane"></div>
+    <div class="pane center">
+      <div class="radial-wrap">
+        <div class="legend">
+          <span><i style="background:var(--accent-2)"></i>Direct</span>
+          <span><i style="background:var(--amber)"></i>Likely</span>
+          <span><i style="background:var(--blue)"></i>Possible</span>
+        </div>
+        <svg id="radial-svg" viewBox="0 0 640 560"></svg>
+      </div>
+      <div class="bottom">
+        <div>
+          <div class="card-label">How the blast radius grows</div>
+          <div class="steps" id="steps"></div>
+        </div>
+        <div>
+          <div class="card-label">Agent narrative</div>
+          <div class="log" id="log"></div>
+        </div>
+        <div>
+          <div class="card-label">Analyst decision</div>
+          <div class="actions">
+            <button class="btn primary" id="btn-accept">✓ Accept</button>
+            <button class="btn" id="btn-deeper">Deeper analysis</button>
+            <button class="btn ghost" id="btn-reject">Reject</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="pane right" id="right-pane"></div>
+  </div>
+</div>
+
+<button class="chat-btn" id="chat-open">✦ Ask Blast Radius</button>
+<div class="chat-panel" id="chat-panel">
+  <div class="chat-head">Ask Blast Radius <button id="chat-close">×</button></div>
+  <div class="chat-msgs" id="chat-msgs"></div>
+  <div class="chat-quick">
+    <button data-q="who">Who's affected?</button>
+    <button data-q="confidence">Confidence?</button>
+    <button data-q="false">False positives?</button>
+  </div>
+  <div class="chat-input">
+    <input id="chat-input" placeholder="Ask about this assessment…" />
+    <button id="chat-send">Send</button>
+  </div>
+</div>
+
+<script>
+/* Mock data shaped exactly like snow_agent/report.py's to_json() output --
+   these are the real numbers produced by the actual correlation engine in
+   snow_agent/correlate.py against fabricated test incidents, not invented
+   for this UI. Swap this object for a live fetch() once a backend endpoint
+   exists (custom or Blueverse-native) -- nothing else here needs to change. */
+const SCENARIOS = {
+  storm: {
+    label: 'Storm cluster',
+    trigger: { number: 'INC0001', short_description: 'Multiple outage-related contacts after severe weather', area: 'Hampton Roads', group: 'Major Incident Management', state: 'Active', priority: '1 - Critical' },
+    direct: [
+      { number: 'INC0002', short_description: 'Outage status updates delayed for operations users', score: 0.73, reasons: ['same assignment group', 'same location', 'same category', 'opened 1.7h apart', '9% keyword overlap'] },
+    ],
+    excluded: [
+      { number: 'INC0004', short_description: 'Printer offline on 3rd floor', reason: 'no matching signals — different location, group, and category' },
+    ],
+    likely_apps: ['Outage management', 'Outage reporting'],
+    possible: { locations: ['Hampton Roads'], who: 'Major Incident Management', reach: 'single location', urgency: '1 - Critical' },
+    cause: 'Potential outage disruption',
+    confidence: 84,
+    summary: '1 related incident found, correlated by assignment group, location, category, timing, and keyword overlap. Reported across a single location.',
+    sources_checked: ['Active incidents', 'Recently resolved incidents'],
+  },
+  isolated: {
+    label: 'Isolated',
+    trigger: { number: 'INC0010', short_description: 'Single user cannot open employee portal', area: 'Richmond office', group: 'Service Desk', state: 'Active', priority: '4 - Low' },
+    direct: [],
+    excluded: [],
+    likely_apps: [],
+    possible: { locations: ['Richmond office'], who: 'Service Desk', reach: 'single location', urgency: '4 - Low' },
+    cause: 'Likely isolated issue',
+    confidence: 90,
+    summary: 'INC0010 does not match other active or recent incidents on assignment group, location, category, or symptom keywords. The blast radius is limited to this single incident.',
+    sources_checked: ['Active incidents', 'Recently resolved incidents'],
+  },
+  falsepos: {
+    label: 'False-positive cluster',
+    trigger: { number: 'INC0020', short_description: 'Multiple outage keywords detected in customer cases', area: 'Virginia', group: 'Service Desk', state: 'Active', priority: '3 - Moderate' },
+    direct: [],
+    excluded: [
+      { number: 'INC0021', short_description: 'Customer billing question tagged as outage', reason: 'contains "unrelated" in notes' },
+      { number: 'INC0022', short_description: 'Local device outage reported', reason: 'contains "local issue" in notes' },
+    ],
+    likely_apps: [],
+    possible: { locations: ['Virginia'], who: 'Service Desk', reach: 'single location', urgency: '3 - Moderate' },
+    cause: 'Likely isolated issue',
+    confidence: 90,
+    summary: '2 candidate matches were found by signal but excluded after their own notes contradicted a shared cause. No real cluster remains.',
+    sources_checked: ['Active incidents', 'Recently resolved incidents'],
+  },
+};
+
+const STEPS = ['Trigger', 'Extract signals', 'Search ServiceNow', 'Form direct cluster', 'Expand likely', 'Expand possible', 'Challenge false positives', 'Analyst decision'];
+
+let current = 'storm';
+let phase = STEPS.length; // fully resolved by default so it reads well at rest
+
+function S() { return SCENARIOS[current]; }
+
+function renderSwitch() {
+  const el = document.getElementById('scenario-switch');
+  el.innerHTML = '';
+  Object.keys(SCENARIOS).forEach((key) => {
+    const b = document.createElement('button');
+    b.className = 'scn' + (key === current ? ' active' : '');
+    b.textContent = SCENARIOS[key].label;
+    b.onclick = () => { current = key; renderAll(); };
+    el.appendChild(b);
+  });
+}
+
+function renderLeft() {
+  const s = S();
+  const el = document.getElementById('left-pane');
+  el.innerHTML = `
+    <div class="card-label">Triggering incident</div>
+    <div class="card">
+      <span class="inc-number">${s.trigger.number}</span>
+      <div class="inc-title">${s.trigger.short_description}</div>
+      <span class="badge">${s.trigger.priority}</span>
+      <div style="margin-top:10px;">
+        <div class="kv"><span class="k">Area</span><span class="v">${s.trigger.area}</span></div>
+        <div class="kv"><span class="k">Assignment group</span><span class="v">${s.trigger.group}</span></div>
+        <div class="kv"><span class="k">State</span><span class="v">${s.trigger.state}</span></div>
+      </div>
+    </div>
+    <div class="card-label">Evidence checked</div>
+    <div class="card">
+      ${s.sources_checked.map(src => `<div class="src-item"><span class="src-dot"></span>${src}</div>`).join('')}
+      <div class="src-item" style="opacity:.4"><span class="src-dot" style="background:var(--text-3)"></span>Problem records (not yet wired)</div>
+      <div class="src-item" style="opacity:.4"><span class="src-dot" style="background:var(--text-3)"></span>Change records (not yet wired)</div>
+    </div>
+  `;
+}
+
+function renderRight() {
+  const s = S();
+  const el = document.getElementById('right-pane');
+  let html = `
+    <div class="card-label">Assessment</div>
+    <div class="sev-row"><span class="sev-badge">${s.cause}</span><span class="mono" style="font-size:11px;color:var(--text-2)">${s.confidence}% confidence</span></div>
+    <div class="conf-track"><div class="conf-fill" style="width:${s.confidence}%"></div></div>
+    <div class="summary-text">${s.summary}</div>
+  `;
+  if (s.direct.length) {
+    html += `<div class="card-label">Direct cluster</div>`;
+    s.direct.forEach(m => {
+      html += `<div class="match-item"><div class="match-head"><span>${m.number}</span><span class="sc">${m.score.toFixed(2)}</span></div><div class="match-desc">${m.short_description}</div><div class="match-reasons">${m.reasons.join(' · ')}</div></div>`;
+    });
+  }
+  if (s.excluded.length) {
+    html += `<div class="card-label">Excluded (false positive)</div>`;
+    s.excluded.forEach(m => {
+      html += `<div class="match-item excl-item"><div class="match-head"><span>${m.number}</span></div><div class="match-desc">${m.short_description}</div><div class="match-reasons">${m.reason}</div></div>`;
+    });
+  }
+  if (s.likely_apps.length) {
+    html += `<div class="card-label">Likely capabilities</div><div class="card" style="padding:10px 12px;font-size:11.5px;">${s.likely_apps.join(', ')}</div>`;
+  }
+  html += `<div class="card-label">Possible impact</div><div class="card">
+    <div class="kv"><span class="k">Locations</span><span class="v">${s.possible.locations.join(', ')}</span></div>
+    <div class="kv"><span class="k">Who</span><span class="v">${s.possible.who}</span></div>
+    <div class="kv"><span class="k">Reach</span><span class="v">${s.possible.reach}</span></div>
+    <div class="kv"><span class="k">Urgency</span><span class="v">${s.possible.urgency}</span></div>
+  </div>`;
+  el.innerHTML = html;
+}
+
+function renderSteps() {
+  const el = document.getElementById('steps');
+  el.innerHTML = STEPS.map((label, i) => {
+    const cls = i < phase - 1 ? 'done' : i === phase - 1 ? 'active' : '';
+    return `<span class="step-chip ${cls}">${i + 1}. ${label}</span>`;
+  }).join('');
+}
+
+function renderLog() {
+  const s = S();
+  const el = document.getElementById('log');
+  const lines = [
+    'Trigger incident placed at the center of the map.',
+    'Symptoms, location, timing extracted.',
+    'Searching ServiceNow incidents…',
+    `Direct cluster formed: ${s.direct.length} incident(s).`,
+    `Likely capabilities expanded: ${s.likely_apps.length ? s.likely_apps.join(', ') : 'none populated'}.`,
+    `Possible impact expanded across ${s.possible.reach}.`,
+    s.excluded.length ? `${s.excluded.length} candidate(s) excluded as false positives.` : 'No contradictory evidence found.',
+    'Assessment ready for analyst review.',
+  ];
+  el.innerHTML = lines.map(l => `<div><span class="t">›</span> ${l}</div>`).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+function renderRadial() {
+  const s = S();
+  const svg = document.getElementById('radial-svg');
+  const ns = 'http://www.w3.org/2000/svg';
+  svg.innerHTML = '';
+  const cx = 320, cy = 280;
+
+  [ [90, 'var(--blue)', 0.5, true], [150, 'var(--amber)', 0.5, true], [210, 'var(--accent-2)', 0.7, false] ].forEach(([r, color, op]) => {
+    const c = document.createElementNS(ns, 'circle');
+    c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', r);
+    c.setAttribute('fill', 'none'); c.setAttribute('stroke', color); c.setAttribute('stroke-width', '1.3'); c.setAttribute('opacity', op);
+    svg.appendChild(c);
+  });
+  ['DIRECT', 'LIKELY', 'POSSIBLE'].forEach((label, i) => {
+    const t = document.createElementNS(ns, 'text');
+    const r = [70, 130, 190][i];
+    t.setAttribute('x', cx); t.setAttribute('y', cy - r - 6);
+    t.setAttribute('text-anchor', 'middle'); t.setAttribute('font-family', 'ui-monospace, monospace');
+    t.setAttribute('font-size', '9'); t.setAttribute('fill', 'var(--text-3)'); t.setAttribute('letter-spacing', '1');
+    t.textContent = label;
+    svg.appendChild(t);
+  });
+
+  // center trigger
+  const pulse = document.createElementNS(ns, 'circle');
+  pulse.setAttribute('class', 'pulse'); pulse.setAttribute('cx', cx); pulse.setAttribute('cy', cy); pulse.setAttribute('r', 8);
+  pulse.setAttribute('fill', 'none'); pulse.setAttribute('stroke', 'var(--accent)'); pulse.setAttribute('stroke-width', '2');
+  svg.appendChild(pulse);
+  const centerG = document.createElementNS(ns, 'g');
+  const centerDot = document.createElementNS(ns, 'circle');
+  centerDot.setAttribute('class', 'dot'); centerDot.setAttribute('cx', cx); centerDot.setAttribute('cy', cy); centerDot.setAttribute('r', 14);
+  centerDot.setAttribute('fill', 'var(--accent)');
+  centerG.appendChild(centerDot);
+  const centerLbl = document.createElementNS(ns, 'text');
+  centerLbl.setAttribute('class', 'lbl'); centerLbl.setAttribute('x', cx); centerLbl.setAttribute('y', cy + 30);
+  centerLbl.textContent = s.trigger.number;
+  centerG.appendChild(centerLbl);
+  svg.appendChild(centerG);
+
+  // direct-ring nodes
+  const directR = 70;
+  const total = Math.max(s.direct.length + s.excluded.length, 1);
+  let idx = 0;
+  s.direct.forEach((m) => {
+    const angle = (idx / total) * Math.PI * 1.4 - Math.PI * 0.7;
+    placeNode(svg, cx + directR * Math.sin(angle), cy - directR * Math.cos(angle), 10, 'var(--accent-2)', m.number, m.short_description.slice(0, 22) + '…');
+    idx++;
+  });
+  s.excluded.forEach((m) => {
+    const angle = (idx / total) * Math.PI * 1.4 - Math.PI * 0.7;
+    const x = cx + directR * Math.sin(angle), y = cy - directR * Math.cos(angle);
+    placeNode(svg, x, y, 8, 'var(--text-3)', m.number, 'excluded', true);
+    idx++;
+  });
+
+  // likely-ring chips (apps)
+  const likelyR = 130;
+  s.likely_apps.forEach((app, i) => {
+    const angle = (i / Math.max(s.likely_apps.length, 1)) * Math.PI * 1.2 - Math.PI * 0.6;
+    placeNode(svg, cx + likelyR * Math.sin(angle), cy - likelyR * Math.cos(angle), 8, 'var(--amber)', app, '');
+  });
+
+  // possible-ring chips (locations / who)
+  const possibleR = 190;
+  const possibleItems = [...s.possible.locations, s.possible.who];
+  possibleItems.forEach((item, i) => {
+    const angle = (i / possibleItems.length) * Math.PI * 2 - Math.PI / 2;
+    placeNode(svg, cx + possibleR * Math.sin(angle), cy - possibleR * Math.cos(angle), 7, 'var(--blue)', item, '');
+  });
+}
+
+function placeNode(svg, x, y, r, color, label, sub, excluded) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const g = document.createElementNS(ns, 'g');
+  g.setAttribute('class', 'gnode');
+  const c = document.createElementNS(ns, 'circle');
+  c.setAttribute('class', 'dot'); c.setAttribute('cx', x); c.setAttribute('cy', y); c.setAttribute('r', r); c.setAttribute('fill', color);
+  if (excluded) c.setAttribute('opacity', '0.5');
+  g.appendChild(c);
+  if (excluded) {
+    const x1 = document.createElementNS(ns, 'line');
+    x1.setAttribute('class', 'excl-x'); x1.setAttribute('x1', x - r * 0.7); x1.setAttribute('y1', y - r * 0.7); x1.setAttribute('x2', x + r * 0.7); x1.setAttribute('y2', y + r * 0.7);
+    const x2 = document.createElementNS(ns, 'line');
+    x2.setAttribute('class', 'excl-x'); x2.setAttribute('x1', x - r * 0.7); x2.setAttribute('y1', y + r * 0.7); x2.setAttribute('x2', x + r * 0.7); x2.setAttribute('y2', y - r * 0.7);
+    g.appendChild(x1); g.appendChild(x2);
+  }
+  const lbl = document.createElementNS(ns, 'text');
+  lbl.setAttribute('class', 'lbl'); lbl.setAttribute('x', x); lbl.setAttribute('y', y + r + 12);
+  lbl.textContent = label;
+  g.appendChild(lbl);
+  if (sub) {
+    const s2 = document.createElementNS(ns, 'text');
+    s2.setAttribute('class', 'sub'); s2.setAttribute('x', x); s2.setAttribute('y', y + r + 22);
+    s2.textContent = sub;
+    g.appendChild(s2);
+  }
+  svg.appendChild(g);
+}
+
+function renderAll() {
+  renderSwitch();
+  renderLeft();
+  renderRight();
+  renderSteps();
+  renderLog();
+  renderRadial();
+}
+
+// theme toggle
+document.getElementById('theme-btn').onclick = () => {
+  const root = document.documentElement;
+  const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+  root.setAttribute('data-theme', next);
+};
+
+// chat (grounded, canned answers over the current scenario -- same idea as
+// snow_agent/narrate.py's ask(), just simulated client-side here)
+const chatMsgs = document.getElementById('chat-msgs');
+function pushMsg(text, isUser) {
+  const d = document.createElement('div');
+  d.className = 'chat-msg' + (isUser ? ' user' : '');
+  d.textContent = text;
+  chatMsgs.appendChild(d);
+  chatMsgs.scrollTop = chatMsgs.scrollHeight;
+}
+function answer(q) {
+  const s = S();
+  const l = q.toLowerCase();
+  if (l.includes('who')) return `Reported reach: ${s.possible.who}, ${s.possible.reach}.`;
+  if (l.includes('confidence')) return `Confidence is ${s.confidence}%. ${s.cause}.`;
+  if (l.includes('false')) return s.excluded.length ? `${s.excluded.length} excluded: ${s.excluded.map(e => e.number).join(', ')}.` : 'No false positives found in this assessment.';
+  return `${s.trigger.number} → ${s.direct.length} direct match(es), ${s.confidence}% confidence. ${s.summary}`;
+}
+document.getElementById('chat-open').onclick = () => { document.getElementById('chat-panel').classList.add('open'); if (!chatMsgs.children.length) pushMsg(`Assessment ready for ${S().trigger.number}. Ask me anything about it.`); };
+document.getElementById('chat-close').onclick = () => document.getElementById('chat-panel').classList.remove('open');
+document.querySelectorAll('.chat-quick button').forEach(b => b.onclick = () => { pushMsg(b.textContent, true); pushMsg(answer(b.dataset.q)); });
+document.getElementById('chat-send').onclick = sendChat;
+document.getElementById('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+function sendChat() {
+  const input = document.getElementById('chat-input');
+  if (!input.value.trim()) return;
+  pushMsg(input.value, true);
+  pushMsg(answer(input.value));
+  input.value = '';
+}
+
+// action buttons (no-op visual feedback only -- this is a UI mockup)
+document.getElementById('btn-accept').onclick = () => alert('Would post the assessment to ' + S().trigger.number + ' as a work note (snow_agent --post-note).');
+document.getElementById('btn-reject').onclick = () => alert('Would discard the assessment. No ServiceNow write occurs.');
+document.getElementById('btn-deeper').onclick = () => alert('Would widen the search window and re-run correlation (snow_main.py --hours 24).');
+
+renderAll();
+</script>
