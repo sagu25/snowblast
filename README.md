@@ -18,19 +18,52 @@ report's JSON shape are deliberately kept separate from this backend so
 that swap only means pointing the UI at a different data source, not
 rebuilding it.
 
-## UI
+## The real UI (`web/`)
+
+A full React app wired to a live backend — not the static mockup below.
+
+```
+# Terminal 1 — the API
+pip install -r requirements.txt
+python api.py                    # http://localhost:5057
+
+# Terminal 2 — the UI
+cd web
+npm install
+npm run dev                      # prints the URL, usually http://localhost:5173
+```
+
+Open the printed URL, type a ServiceNow incident number in the top bar
+(one that `seed_incidents.py` printed, or any real one), and click
+**Analyze**. Without ServiceNow credentials set yet, you'll see a clean
+"ServiceNow not configured" card instead of a crash — exactly like the
+CLI's error, just rendered. Once `SERVICENOW_*` env vars are set, the same
+running servers start returning real data with no code changes.
+
+What it does: the top-bar incident lookup runs a live `GET
+/api/incident/<number>`; the center panel renders the actual
+Direct/Likely/Possible radial view from that response; the right panel is
+the full assessment breakdown, with a **Narrate** button that calls
+Claude (needs an LLM credential — shows a clear inline error otherwise,
+doesn't crash); the bottom bar has real analyst actions — **Accept** asks
+you to confirm, then actually posts a work note to ServiceNow; **Deeper
+analysis** re-runs the search with a doubled time window; **Reject**
+discards client-side, no write. The floating chat calls the same grounded
+`ask()` the CLI's `--chat` uses.
+
+`api.py` is a thin Flask layer — every endpoint just calls the same
+`snow_agent` functions `snow_main.py` does; there's no logic in it beyond
+request/response plumbing and turning credential errors into clean JSON
+(503) instead of a stack trace.
+
+## Static UI mockup (no backend)
 
 `snow_agent/ui-mockup.html` — open it directly in a browser, no server
 needed. It's populated with the exact numbers the real correlation engine
 produces (the storm/isolated/false-positive scenarios in `correlate.py`'s
 own validation run), shaped identically to `report.py`'s `to_json()`
-output — so pointing it at a live backend later (this one, or the
-Blueverse LTM-native agent it's slated to be replaced by) means swapping
-the mock `SCENARIOS` object for a `fetch()`, not rebuilding the UI. Three
-scenarios (storm cluster, isolated incident, false-positive cluster), the
-Direct/Likely/Possible radial view, the 8-step timeline, an agent
-narrative log, analyst decision buttons (Accept/Deeper analysis/Reject),
-and an "Ask Blast Radius" chat.
+output. Useful for a quick look or a presentation without spinning up the
+full stack; the real UI above (`web/`) is the one wired to live data.
 
 ## Setup
 
@@ -121,17 +154,19 @@ Mirrors the reference prototype's 8-step method, but for real:
   evidence in.
 - No OAuth — Basic Auth only, which is fine for a PDI but likely not for
   a production ServiceNow instance.
-- The chat (`--chat`) answers questions about the already-computed
-  assessment; it doesn't re-query ServiceNow mid-conversation.
-- The UI (`ui-mockup.html`) and this Python backend aren't wired together
-  yet — same JSON shape, but the UI still reads a mock object rather than
-  calling a live endpoint. A thin API layer (Flask/FastAPI wrapping
-  `snow_agent`) would close that gap.
+- The chat (`--chat` / the web UI's chat) answers questions about the
+  already-computed assessment; it doesn't re-query ServiceNow
+  mid-conversation.
+- `api.py` runs Flask's development server (`app.run(debug=True)`) —
+  fine for local use, not meant to be exposed as-is.
+- `api.py` caches the last assessment per incident number in memory —
+  fine for one person testing locally, not for concurrent/multi-user use.
 
 ## Files
 
 ```
-snow_main.py          entry point
+snow_main.py          CLI entry point
+api.py                  Flask API for the React UI (thin wrapper, no logic)
 requirements.txt
 snow_agent/
   client.py         ServiceNow Table API wrapper (GET/POST/PATCH, Basic Auth)
@@ -142,5 +177,17 @@ snow_agent/
   llm_client.py             Anthropic vs. Azure Foundry, auto-picked
   cli.py                      argument parsing
   seed_incidents.py             creates demo incident clusters for a fresh instance
-  ui-mockup.html                  the console UI, see "UI" above
+  ui-mockup.html                  static UI mockup (no backend), see above
+web/                    the real React app, wired to api.py
+  vite.config.js          dev-server proxy to api.py
+  src/
+    App.jsx                 top-level state: lookup, assessment, theme, chat
+    api.js                    fetch wrapper, typed ApiError on non-2xx
+    components/
+      TopBar.jsx                incident-number lookup, hours window, theme
+      LeftPane.jsx                trigger incident card, evidence sources
+      RadialView.jsx                the live Direct/Likely/Possible SVG view
+      AssessmentPanel.jsx            confidence, matches, narrate button
+      BottomBar.jsx                    step timeline, log, analyst actions
+      ChatPanel.jsx                      Ask Blast Radius, grounded chat
 ```
