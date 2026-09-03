@@ -64,6 +64,39 @@ one field is dropped and the incident is still created (correlation just
 leans more on category/timing/keywords for it). Edit those constants to
 match what's actually in your instance for the full effect.
 
+**How ticket creation actually works**, for the same reason section "How
+it works" below spells out correlation instead of just saying "it
+correlates":
+
+1. Each scenario in `seed_incidents.py`'s `SCENARIOS` list is a plain
+   Python dict per incident — `short_description`, `description`,
+   `location`, `assignment_group`, `category`, `priority`,
+   `minutes_ago` (converted to a real `opened_at` timestamp relative to
+   *when you run the script*, not hardcoded dates — so seeded incidents
+   always land inside the default 6-hour correlation window no matter
+   when you seed them).
+2. `build_fields()` turns that into the field dict the Table API expects.
+3. `ServiceNowClient.create_incident()` — new, added specifically for
+   this script — is a plain `POST /api/now/table/incident` (see
+   `client.py`'s `_post`). It's a separate write path from
+   `post_work_note()`, which is the *only* write the agent's own
+   assess/report flow ever makes; `create_incident` is never called
+   during normal correlation, only by this seed script.
+4. `location`/`assignment_group` are ServiceNow *reference* fields — the
+   write only succeeds if a record with that exact display value already
+   exists in your instance. `create_with_fallback()` tries the full write
+   first; if ServiceNow rejects it, it retries the same incident without
+   those two fields rather than aborting the whole run, so seeding still
+   completes even on a completely stock instance. You lose some
+   correlation signal on that record (only category/timing/keywords are
+   left to match on), which is exactly the tradeoff the fallback message
+   prints out loud when it happens.
+5. Nothing here declares which incidents are "related" — that would
+   defeat the point. The clusters only exist because their fields happen
+   to overlap; `correlate.py` has to (re)discover that from scratch when
+   you actually run `snow_main.py` against one, same as it would against
+   real, un-seeded ServiceNow data.
+
 ## 3. Run it — CLI
 
 ```
