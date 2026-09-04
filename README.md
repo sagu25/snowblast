@@ -8,9 +8,9 @@ group, live, every time it runs.
 
 Modeled on a reference prototype (a scripted UX simulator with no real
 backend) but built as an actual working agent: real ServiceNow Table API
-calls, a deterministic and auditable correlation engine, and Claude
-layered on top only for narration and chat — never for the clustering
-math itself.
+calls, a deterministic and auditable correlation engine, and an LLM
+(Azure OpenAI) layered on top only for narration and chat — never for the
+clustering math itself.
 
 This is presently a custom-built agent. It's expected to eventually be
 replaced by a native agent on the Blueverse LTM platform — the UI and the
@@ -34,11 +34,18 @@ $env:SERVICENOW_PASSWORD = "..."
 ```
 
 Basic Auth against a Personal Developer Instance — the simplest thing
-that works for a PDI. For the optional narration/chat features, also set
-one of `ANTHROPIC_API_KEY` or `ANTHROPIC_FOUNDRY_API_KEY` +
-`ANTHROPIC_FOUNDRY_RESOURCE` (Microsoft Foundry / Azure, for environments
-where the first-party Anthropic API is blocked — see
-`snow_agent/llm_client.py`, which auto-detects which to use).
+that works for a PDI. For the optional narration/chat features, also set:
+
+```
+$env:AZURE_OPENAI_API_KEY = "..."
+$env:AZURE_OPENAI_ENDPOINT = "https://your-resource.openai.azure.com/"
+$env:AZURE_OPENAI_DEPLOYMENT = "..."       # the deployment name in Azure AI Foundry, not the model name
+$env:AZURE_OPENAI_API_VERSION = "..."      # optional, defaults to a recent stable version
+```
+
+Narration/chat run through Azure OpenAI (see `snow_agent/llm_client.py`)
+rather than calling Anthropic directly, since the first-party Claude API
+isn't reachable from every environment this runs on.
 
 Until these are set, every entry point below (CLI, API, UI) fails with a
 clean, explicit error naming exactly which variable is missing — never a
@@ -133,8 +140,8 @@ running servers start returning real data with no code changes.
 What it does: the top-bar incident lookup runs a live `GET
 /api/incident/<number>`; the center panel renders the actual
 Direct/Likely/Possible radial view from that response; the right panel is
-the full assessment breakdown, with a **Narrate** button that calls
-Claude (needs an LLM credential — shows a clear inline error otherwise,
+the full assessment breakdown, with a **Narrate** button that calls the
+LLM (needs an LLM credential — shows a clear inline error otherwise,
 doesn't crash); the bottom bar has real analyst actions — **Accept** asks
 you to confirm, then actually posts a work note to ServiceNow; **Deeper
 analysis** re-runs the search with a doubled time window; **Reject**
@@ -192,8 +199,8 @@ Mirrors the reference prototype's 8-step method, but for real:
   `python api.py` runs, then restart it (env vars are only read at
   startup).
 - **`--narrate`/`--chat`/the Narrate button/the chat panel show a
-  credential error** — the LLM credential (`ANTHROPIC_API_KEY` or the
-  `ANTHROPIC_FOUNDRY_*` pair) isn't set. Everything else works without it.
+  credential error** — one of the `AZURE_OPENAI_*` variables isn't set.
+  Everything else works without it.
 - **Seeded incidents don't form the expected cluster** — `location`/
   `assignment_group` in `seed_incidents.py` may not match real records in
   your instance, so that field got silently dropped on creation (see
@@ -233,8 +240,8 @@ snow_agent/
   models.py          Incident / MatchedIncident / BlastRadiusAssessment
   correlate.py         the deterministic 8-step correlation engine
   report.py             text / JSON / work-note rendering
-  narrate.py              Claude narration + grounded chat
-  llm_client.py             Anthropic vs. Azure Foundry, auto-picked
+  narrate.py              LLM narration + grounded chat (Azure OpenAI)
+  llm_client.py             builds the Azure OpenAI client
   cli.py                      argument parsing
   seed_incidents.py             creates demo incident clusters for a fresh instance
   ui-mockup.html                  static UI mockup (no backend), see section 5

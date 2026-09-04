@@ -18,7 +18,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--incident", required=True, help="Incident number (e.g. INC0010023) or sys_id")
     parser.add_argument("--hours", type=float, default=6.0, help="Time window (hours, each direction) to search for related incidents (default: 6)")
     parser.add_argument("--json", action="store_true", help="emit the report as JSON")
-    parser.add_argument("--narrate", action="store_true", help="add a Claude-generated plain-language summary (needs an LLM credential)")
+    parser.add_argument("--narrate", action="store_true", help="add an LLM-generated plain-language summary (needs an LLM credential)")
     parser.add_argument("--chat", action="store_true", help="after the report, ask follow-up questions grounded in it (needs an LLM credential)")
     parser.add_argument("--post-note", action="store_true", help="write the assessment back to ServiceNow as a work note -- requires explicit human confirmation")
     args = parser.parse_args(argv)

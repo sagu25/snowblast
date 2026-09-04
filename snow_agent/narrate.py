@@ -1,9 +1,7 @@
-"""Claude narration and chat over an already-computed BlastRadiusAssessment.
+"""LLM narration and chat over an already-computed BlastRadiusAssessment.
 
-Uses llm_client.py's dual Anthropic/Azure-Foundry client, so this mode
-runs on the same "put credentials in later" model throughout -- no code
-changes needed to switch between a home setup and a locked-down company
-laptop.
+Uses llm_client.py's Azure OpenAI client, so this runs on the same "put
+credentials in later" model as the rest of the agent.
 
 The model never re-runs the correlation or invents a number: both
 functions below hand it the finished assessment as data and ask it to
@@ -12,10 +10,8 @@ either narrate or answer a question grounded in exactly that data.
 
 from __future__ import annotations
 
-from snow_agent.llm_client import build_client
+from snow_agent.llm_client import build_client, deployment_name
 from snow_agent.report import to_json
-
-MODEL = "claude-opus-5"
 
 NARRATE_SYSTEM = """\
 You narrate a ServiceNow blast-radius assessment for a non-technical \
@@ -38,23 +34,25 @@ score, or specific match reasons where relevant).
 
 def narrate(assessment) -> str:
     client = build_client()
-    response = client.messages.create(
-        model=MODEL,
+    response = client.chat.completions.create(
+        model=deployment_name(),
         max_tokens=512,
-        system=NARRATE_SYSTEM,
-        messages=[{"role": "user", "content": to_json(assessment)}],
+        messages=[
+            {"role": "system", "content": NARRATE_SYSTEM},
+            {"role": "user", "content": to_json(assessment)},
+        ],
     )
-    return next((b.text for b in response.content if b.type == "text"), "")
+    return response.choices[0].message.content or ""
 
 
 def ask(assessment, question: str) -> str:
     client = build_client()
-    response = client.messages.create(
-        model=MODEL,
+    response = client.chat.completions.create(
+        model=deployment_name(),
         max_tokens=512,
-        system=CHAT_SYSTEM,
         messages=[
+            {"role": "system", "content": CHAT_SYSTEM},
             {"role": "user", "content": f"Assessment:\n{to_json(assessment)}\n\nQuestion: {question}"},
         ],
     )
-    return next((b.text for b in response.content if b.type == "text"), "")
+    return response.choices[0].message.content or ""

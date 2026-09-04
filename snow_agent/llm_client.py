@@ -1,43 +1,52 @@
-"""Builds the Anthropic client for whichever environment this runs in.
+"""Builds the Azure OpenAI client used for narration/chat.
 
-Some environments (e.g. a locked-down company laptop) block the first-party
-Anthropic API but allow Claude via Microsoft Foundry (Azure), billed through
-the Azure Marketplace at standard API rates. AnthropicFoundry exposes the
-same request surface (including client.beta.messages.tool_runner), so the
-rest of the agent code needs no changes -- only which client gets built.
+This runs on the same "put credentials in later" model as the rest of the
+agent -- nothing here works until you set these environment variables:
 
-Credentials are never read from anywhere but the environment. Set one of:
-  - ANTHROPIC_API_KEY                                  (first-party Anthropic)
-  - ANTHROPIC_FOUNDRY_API_KEY + ANTHROPIC_FOUNDRY_RESOURCE
-    (or ANTHROPIC_FOUNDRY_BASE_URL instead of _RESOURCE)  (Microsoft Foundry)
+  - AZURE_OPENAI_API_KEY
+  - AZURE_OPENAI_ENDPOINT      e.g. https://your-resource.openai.azure.com/
+  - AZURE_OPENAI_DEPLOYMENT    the deployment name you gave the model in
+                                Azure AI Foundry (not the underlying model
+                                name -- e.g. "gpt-4o", not "gpt-4o-2024-...")
+  - AZURE_OPENAI_API_VERSION   optional, defaults to a recent stable version
+
+Credentials are never read from anywhere but the environment.
 """
 
 from __future__ import annotations
 
 import os
 
-import anthropic
+from openai import AzureOpenAI
 
-_FOUNDRY_ENV_VARS = (
-    "ANTHROPIC_FOUNDRY_API_KEY",
-    "ANTHROPIC_FOUNDRY_RESOURCE",
-    "ANTHROPIC_FOUNDRY_BASE_URL",
-)
+_REQUIRED = ("AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_DEPLOYMENT")
+_DEFAULT_API_VERSION = "2024-10-21"
 
 
 class NoCredentialsConfigured(RuntimeError):
     pass
 
 
-def build_client() -> anthropic.Anthropic:
+def build_client() -> AzureOpenAI:
     """Raises NoCredentialsConfigured immediately if nothing is set, instead
     of letting the SDK defer that failure to the first request."""
-    if any(os.environ.get(var) for var in _FOUNDRY_ENV_VARS):
-        return anthropic.AnthropicFoundry()
-    if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
-        return anthropic.Anthropic()
-    raise NoCredentialsConfigured(
-        "set either ANTHROPIC_API_KEY (first-party Anthropic) or "
-        "ANTHROPIC_FOUNDRY_API_KEY + ANTHROPIC_FOUNDRY_RESOURCE "
-        "(Microsoft Foundry / Azure) as environment variables"
+    missing = [var for var in _REQUIRED if not os.environ.get(var)]
+    if missing:
+        raise NoCredentialsConfigured(
+            "set " + ", ".join(missing) + " as environment variables "
+            "(Azure OpenAI: API key, endpoint, and the deployment name you "
+            "gave the model in Azure AI Foundry)"
+        )
+    return AzureOpenAI(
+        api_key=os.environ["AZURE_OPENAI_API_KEY"],
+        azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+        api_version=os.environ.get("AZURE_OPENAI_API_VERSION", _DEFAULT_API_VERSION),
     )
+
+
+def deployment_name() -> str:
+    """The Azure deployment name, used as the `model` argument on chat
+    completions. Separate from build_client() so callers can construct the
+    client and resolve the deployment in one NoCredentialsConfigured-guarded
+    step, without a second, uncaught KeyError further down."""
+    return os.environ["AZURE_OPENAI_DEPLOYMENT"]
