@@ -16,7 +16,7 @@ export default function CiGraphView({ graph }) {
         <span><i style={{ background: 'var(--accent)' }} />Triggering CI</span>
         <span><i style={{ background: 'var(--cyan)' }} />Related CI</span>
       </div>
-      <svg viewBox="0 0 640 560" style={{ maxWidth: '100%', height: 'auto' }}>
+      <svg viewBox="0 0 640 560">
         {graph.edges.map((e, i) => {
           const [x1, y1] = positions[e.source] || [CX, CY]
           const [x2, y2] = positions[e.target] || [CX, CY]
