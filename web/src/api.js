@@ -34,6 +34,16 @@ export async function getCiGraph(number) {
   return handle(resp)
 }
 
+export async function getCiGraphById(ciId) {
+  const resp = await fetch(`/api/ci/${encodeURIComponent(ciId)}/graph`)
+  return handle(resp)
+}
+
+export async function listCis(q = '') {
+  const resp = await fetch(`/api/ci?q=${encodeURIComponent(q)}`)
+  return handle(resp)
+}
+
 export async function askChat(number, question) {
   const resp = await fetch(`/api/incident/${encodeURIComponent(number)}/chat`, {
     method: 'POST',

@@ -4,10 +4,11 @@ import StatsRow from './components/StatsRow.jsx'
 import LeftPane from './components/LeftPane.jsx'
 import RadialView from './components/RadialView.jsx'
 import CiGraphView from './components/CiGraphView.jsx'
+import CiList from './components/CiList.jsx'
 import AssessmentPanel from './components/AssessmentPanel.jsx'
 import BottomBar from './components/BottomBar.jsx'
 import ChatPanel from './components/ChatPanel.jsx'
-import { getAssessment, getCiGraph, postNote, ApiError } from './api.js'
+import { getAssessment, getCiGraph, getCiGraphById, postNote, ApiError } from './api.js'
 
 export default function App() {
   const [theme, setTheme] = useState(
@@ -26,22 +27,33 @@ export default function App() {
   const [ciGraph, setCiGraph] = useState(null)
   const [ciLoading, setCiLoading] = useState(false)
   const [ciError, setCiError] = useState(null)
+  const [ciAttempted, setCiAttempted] = useState(false) // have we tried the incident's own CI yet?
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
 
-  useEffect(() => {
-    if (tab !== 'ci' || !incidentNumber || ciGraph || ciLoading) return
-    let cancelled = false
+  function loadCiGraph(ciId) {
     setCiLoading(true)
     setCiError(null)
-    getCiGraph(incidentNumber)
-      .then((data) => { if (!cancelled) setCiGraph(data) })
-      .catch((err) => { if (!cancelled) setCiError(err instanceof ApiError ? err : new Error('Unexpected error')) })
-      .finally(() => { if (!cancelled) setCiLoading(false) })
-    return () => { cancelled = true }
+    const request = ciId ? getCiGraphById(ciId) : getCiGraph(incidentNumber)
+    request
+      .then((data) => setCiGraph(data))
+      .catch((err) => setCiError(err instanceof ApiError ? err : new Error('Unexpected error')))
+      .finally(() => setCiLoading(false))
+  }
+
+  useEffect(() => {
+    if (tab !== 'ci' || !incidentNumber || ciAttempted || ciLoading) return
+    setCiAttempted(true)
+    loadCiGraph(null) // try the incident's own configuration item first, as a convenience default
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, incidentNumber])
+
+  function handleSelectCi(ciId) {
+    if (ciGraph && ciId === ciGraph.root) return
+    loadCiGraph(ciId)
+  }
 
   async function runLookup(number, hoursValue) {
     setIncidentNumber(number)
@@ -51,6 +63,7 @@ export default function App() {
     setPostResult(null)
     setTab('radius')
     setCiGraph(null)
+    setCiAttempted(false)
     setCiError(null)
     try {
       const data = await getAssessment(number, hoursValue)
@@ -136,33 +149,38 @@ export default function App() {
               )}
 
               {tab === 'ci' && (
-                <>
-                  {ciLoading && (
-                    <div className="center-loading">
-                      <div className="spinner" />
-                      <div className="small">Fetching CI relationships from cmdb_rel_ci…</div>
-                    </div>
-                  )}
-                  {!ciLoading && ciError && (
-                    <div className="center-error">
-                      <div className="big">{ciError.code === 'no_ci' ? 'No configuration item on this incident' : ciError.code === 'servicenow_not_configured' ? 'ServiceNow not configured yet' : 'Could not load CI relationships'}</div>
-                      <div className="small">{ciError.message}</div>
-                    </div>
-                  )}
-                  {!ciLoading && !ciError && ciGraph && (
-                    <>
-                      <CiGraphView graph={ciGraph} />
-                      <div className="bottom" style={{ gridTemplateColumns: '1fr' }}>
-                        <div>
-                          <div className="card-label">Source</div>
-                          <div className="small" style={{ color: 'var(--text-2)', fontSize: 12 }}>
-                            {ciGraph.nodes.length} configuration item(s) and {ciGraph.edges.length} relationship(s), fetched live from ServiceNow's <code>cmdb_ci</code> and <code>cmdb_rel_ci</code> tables for <strong>{ciGraph.root_label}</strong> — the same data behind ServiceNow's own CI relationship map.
+                <div className="ci-tab-body">
+                  <CiList selectedId={ciGraph?.root} onSelect={handleSelectCi} />
+
+                  <div className="ci-graph-col">
+                    {ciLoading && (
+                      <div className="center-loading">
+                        <div className="spinner" />
+                        <div className="small">Fetching CI relationships from cmdb_rel_ci…</div>
+                      </div>
+                    )}
+                    {!ciLoading && ciError && (
+                      <div className="center-error">
+                        <div className="big">{ciError.code === 'servicenow_not_configured' ? 'ServiceNow not configured yet' : 'Could not resolve this incident\'s configuration item'}</div>
+                        <div className="small">{ciError.message}</div>
+                        <div className="small">Pick a configuration item from the list to explore its relationships instead.</div>
+                      </div>
+                    )}
+                    {!ciLoading && !ciError && ciGraph && (
+                      <>
+                        <CiGraphView graph={ciGraph} onSelect={handleSelectCi} />
+                        <div className="bottom" style={{ gridTemplateColumns: '1fr' }}>
+                          <div>
+                            <div className="card-label">Source</div>
+                            <div className="small" style={{ color: 'var(--text-2)', fontSize: 12 }}>
+                              {ciGraph.nodes.length} configuration item(s) and {ciGraph.edges.length} relationship(s), fetched live from ServiceNow's <code>cmdb_ci</code> and <code>cmdb_rel_ci</code> tables for <strong>{ciGraph.root_label}</strong> — the same data behind ServiceNow's own CI relationship map.
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </>
-                  )}
-                </>
+                      </>
+                    )}
+                  </div>
+                </div>
               )}
             </>
           )}

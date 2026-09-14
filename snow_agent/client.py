@@ -138,6 +138,21 @@ class ServiceNowClient:
         )
         return records[0] if records else None
 
+    def list_cis(self, query: str | None = None, limit: int = 100) -> list[dict]:
+        """Browse the `cmdb_ci` table directly, optionally filtered by a
+        name substring. Exists so the UI can offer a full pick-list of
+        configuration items instead of depending entirely on one incident's
+        `cmdb_ci` reference, which may be blank, free text, or stale."""
+        clauses = []
+        if query:
+            safe = query.replace("^", "").replace("=", "")
+            clauses.append(f"nameLIKE{safe}")
+        clauses.append("ORDERBYname")
+        return self._get(
+            "cmdb_ci",
+            {"sysparm_query": "^".join(clauses), "sysparm_fields": ",".join(CI_FIELDS), "sysparm_limit": limit},
+        )
+
     def get_ci_relationships(self, ci_sys_id: str, limit: int = 200) -> list[dict]:
         """Every relationship row (`cmdb_rel_ci`) where this CI is either
         the parent or the child -- the raw edges behind ServiceNow's CI

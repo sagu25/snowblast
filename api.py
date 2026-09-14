@@ -134,6 +134,61 @@ def ci_graph(number: str):
     return jsonify(graph)
 
 
+def _dv(value):
+    if isinstance(value, dict):
+        return value.get("display_value") or value.get("value") or ""
+    return value or ""
+
+
+@app.get("/api/ci")
+def list_cis():
+    """Full (optionally filtered) pick-list of configuration items from
+    cmdb_ci -- lets the UI offer every CI in the CMDB, not just whatever a
+    single incident's cmdb_ci field happens to reference (which may be
+    blank, free text, or stale, as incidents commonly are)."""
+    q = request.args.get("q", "").strip()
+    limit = int(request.args.get("limit", 100))
+    try:
+        client = ServiceNowClient()
+        records = client.list_cis(query=q or None, limit=limit)
+    except NoCredentialsConfigured as exc:
+        return jsonify({"error": "servicenow_not_configured", "message": str(exc)}), 503
+    except ServiceNowError as exc:
+        return jsonify({"error": "servicenow_error", "message": str(exc)}), 502
+
+    items = [
+        {
+            "id": _dv(r.get("sys_id")),
+            "label": _dv(r.get("name")) or _dv(r.get("sys_id")),
+            "type": _dv(r.get("sys_class_name")),
+        }
+        for r in records
+    ]
+    return jsonify({"items": items})
+
+
+@app.get("/api/ci/<ci_id>/graph")
+def ci_graph_by_id(ci_id: str):
+    """Same shape as /api/incident/<number>/ci-graph, but rooted at any CI
+    sys_id/name directly -- lets the UI let the user pick a related CI from
+    the list and drill into *its* relationships, not just the one attached
+    to the triggering incident."""
+    try:
+        from snow_agent.ci_graph import build_ci_graph
+
+        client = ServiceNowClient()
+        graph = build_ci_graph(client, ci_id)
+    except NoCredentialsConfigured as exc:
+        return jsonify({"error": "servicenow_not_configured", "message": str(exc)}), 503
+    except ServiceNowError as exc:
+        return jsonify({"error": "servicenow_error", "message": str(exc)}), 502
+
+    if graph is None:
+        return jsonify({"error": "not_found", "message": f"CI '{ci_id}' not found in cmdb_ci"}), 404
+
+    return jsonify(graph)
+
+
 @app.post("/api/incident/<number>/post-note")
 def post_note(number: str):
     assessment = _CACHE.get(number)
