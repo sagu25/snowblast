@@ -1,6 +1,6 @@
 const STEPS = ['Trigger', 'Extract signals', 'Search ServiceNow', 'Form direct cluster', 'Expand likely', 'Expand possible', 'Challenge false positives', 'Analyst decision']
 
-export default function BottomBar({ assessment, onAccept, onDeeper, onReject, posting, postResult }) {
+export default function BottomBar({ assessment }) {
   const lines = [
     'Trigger incident placed at the center of the map.',
     'Symptoms, location, timing extracted.',
@@ -23,19 +23,10 @@ export default function BottomBar({ assessment, onAccept, onDeeper, onReject, po
         </div>
       </div>
       <div>
-        <div className="card-label">Agent narrative</div>
+        <div className="card-label">Live agent narrative</div>
         <div className="log">
           {lines.map((l, i) => <div key={i}><span className="t">›</span> {l}</div>)}
         </div>
-      </div>
-      <div>
-        <div className="card-label">Analyst decision</div>
-        <div className="actions">
-          <button className="btn primary" onClick={onAccept} disabled={posting}>{posting ? 'Posting…' : '✓ Accept'}</button>
-          <button className="btn" onClick={onDeeper}>Deeper analysis</button>
-          <button className="btn ghost" onClick={onReject}>Reject</button>
-        </div>
-        {postResult && <div style={{ fontSize: 11, marginTop: 8, color: postResult.ok ? 'var(--good)' : 'var(--bad)' }}>{postResult.message}</div>}
       </div>
     </div>
   )

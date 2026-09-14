@@ -105,6 +105,35 @@ def chat_assessment(number: str):
     return jsonify({"answer": answer})
 
 
+@app.get("/api/incident/<number>/ci-graph")
+def ci_graph(number: str):
+    assessment = _CACHE.get(number)
+    if assessment is None:
+        return jsonify({"error": "not_found", "message": "call GET /api/incident/<number> first"}), 404
+
+    ci_name = assessment.trigger.cmdb_ci or assessment.trigger.business_service
+    if not ci_name:
+        return jsonify({
+            "error": "no_ci",
+            "message": "the triggering incident has no configuration item (cmdb_ci) set, so there is no CI relationship map to draw",
+        }), 404
+
+    try:
+        from snow_agent.ci_graph import build_ci_graph
+
+        client = ServiceNowClient()
+        graph = build_ci_graph(client, ci_name)
+    except NoCredentialsConfigured as exc:
+        return jsonify({"error": "servicenow_not_configured", "message": str(exc)}), 503
+    except ServiceNowError as exc:
+        return jsonify({"error": "servicenow_error", "message": str(exc)}), 502
+
+    if graph is None:
+        return jsonify({"error": "not_found", "message": f"CI '{ci_name}' not found in cmdb_ci"}), 404
+
+    return jsonify(graph)
+
+
 @app.post("/api/incident/<number>/post-note")
 def post_note(number: str):
     assessment = _CACHE.get(number)

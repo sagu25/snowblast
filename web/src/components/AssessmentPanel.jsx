@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { getNarrative, ApiError } from '../api.js'
 
-export default function AssessmentPanel({ assessment }) {
+export default function AssessmentPanel({ assessment, onAccept, onDeeper, onReject, posting, postResult }) {
   const [narrative, setNarrative] = useState(null)
   const [narrateError, setNarrateError] = useState(null)
   const [narrating, setNarrating] = useState(false)
@@ -21,11 +21,12 @@ export default function AssessmentPanel({ assessment }) {
 
   return (
     <div className="pane right">
-      <div className="card-label">Assessment</div>
+      <div className="card-label">Leadership view</div>
       <div className="sev-row">
         <span className="sev-badge">{assessment.cause}</span>
-        <span className="mono" style={{ fontSize: 11, color: 'var(--text-2)' }}>{assessment.confidence}% confidence</span>
       </div>
+      <div className="confidence-big">{assessment.confidence}%</div>
+      <div className="confidence-sub">Human validation required</div>
       <div className="conf-track"><div className="conf-fill" style={{ width: `${assessment.confidence}%` }} /></div>
       <div className="summary-text">{assessment.summary}</div>
 
@@ -77,6 +78,14 @@ export default function AssessmentPanel({ assessment }) {
         <div className="kv"><span className="k">Reach</span><span className="v">{assessment.possible.reach}</span></div>
         <div className="kv"><span className="k">Urgency</span><span className="v">{assessment.possible.urgency}</span></div>
       </div>
+
+      <div className="card-label">Analyst decision</div>
+      <div className="decision-row">
+        <button className="btn primary" onClick={onAccept} disabled={posting}>{posting ? 'Posting…' : '✓ Accept'}</button>
+        <button className="btn danger" onClick={onReject}>Reject</button>
+        <button className="btn ghost" onClick={onDeeper} style={{ gridColumn: '1 / -1' }}>Deeper analysis</button>
+      </div>
+      {postResult && <div style={{ fontSize: 11, marginTop: 8, color: postResult.ok ? 'var(--good)' : 'var(--bad)' }}>{postResult.message}</div>}
     </div>
   )
 }

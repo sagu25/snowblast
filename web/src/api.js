@@ -29,6 +29,11 @@ export async function getNarrative(number) {
   return handle(resp)
 }
 
+export async function getCiGraph(number) {
+  const resp = await fetch(`/api/incident/${encodeURIComponent(number)}/ci-graph`)
+  return handle(resp)
+}
+
 export async function askChat(number, question) {
   const resp = await fetch(`/api/incident/${encodeURIComponent(number)}/chat`, {
     method: 'POST',

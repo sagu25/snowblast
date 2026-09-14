@@ -34,6 +34,10 @@ DEFAULT_FIELDS = [
     "close_notes",
 ]
 
+CI_FIELDS = ["sys_id", "name", "sys_class_name", "operational_status"]
+
+CI_REL_FIELDS = ["sys_id", "type", "parent", "child"]
+
 
 class NoCredentialsConfigured(RuntimeError):
     pass
@@ -121,6 +125,27 @@ class ServiceNowClient:
         return self._get(
             "incident",
             {"sysparm_query": query, "sysparm_fields": ",".join(DEFAULT_FIELDS), "sysparm_limit": limit},
+        )
+
+    def get_ci(self, sys_id_or_name: str) -> dict | None:
+        """Look up one configuration item by sys_id or name, from the
+        `cmdb_ci` table -- the same record ServiceNow's own CI relationship
+        map is drawn from."""
+        query = f"sys_id={sys_id_or_name}^ORname={sys_id_or_name}"
+        records = self._get(
+            "cmdb_ci",
+            {"sysparm_query": query, "sysparm_fields": ",".join(CI_FIELDS), "sysparm_limit": 1},
+        )
+        return records[0] if records else None
+
+    def get_ci_relationships(self, ci_sys_id: str, limit: int = 200) -> list[dict]:
+        """Every relationship row (`cmdb_rel_ci`) where this CI is either
+        the parent or the child -- the raw edges behind ServiceNow's CI
+        relationship / dependency map."""
+        query = f"parent={ci_sys_id}^ORchild={ci_sys_id}"
+        return self._get(
+            "cmdb_rel_ci",
+            {"sysparm_query": query, "sysparm_fields": ",".join(CI_REL_FIELDS), "sysparm_limit": limit},
         )
 
     def post_work_note(self, sys_id: str, note: str) -> dict:

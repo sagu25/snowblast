@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import TopBar from './components/TopBar.jsx'
+import StatsRow from './components/StatsRow.jsx'
 import LeftPane from './components/LeftPane.jsx'
 import RadialView from './components/RadialView.jsx'
+import CiGraphView from './components/CiGraphView.jsx'
 import AssessmentPanel from './components/AssessmentPanel.jsx'
 import BottomBar from './components/BottomBar.jsx'
 import ChatPanel from './components/ChatPanel.jsx'
-import { getAssessment, postNote, ApiError } from './api.js'
+import { getAssessment, getCiGraph, postNote, ApiError } from './api.js'
 
 export default function App() {
   const [theme, setTheme] = useState(
@@ -20,9 +22,26 @@ export default function App() {
   const [posting, setPosting] = useState(false)
   const [postResult, setPostResult] = useState(null)
 
+  const [tab, setTab] = useState('radius')
+  const [ciGraph, setCiGraph] = useState(null)
+  const [ciLoading, setCiLoading] = useState(false)
+  const [ciError, setCiError] = useState(null)
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    if (tab !== 'ci' || !incidentNumber || ciGraph || ciLoading) return
+    let cancelled = false
+    setCiLoading(true)
+    setCiError(null)
+    getCiGraph(incidentNumber)
+      .then((data) => { if (!cancelled) setCiGraph(data) })
+      .catch((err) => { if (!cancelled) setCiError(err instanceof ApiError ? err : new Error('Unexpected error')) })
+      .finally(() => { if (!cancelled) setCiLoading(false) })
+    return () => { cancelled = true }
+  }, [tab, incidentNumber])
 
   async function runLookup(number, hoursValue) {
     setIncidentNumber(number)
@@ -30,6 +49,9 @@ export default function App() {
     setLoading(true)
     setError(null)
     setPostResult(null)
+    setTab('radius')
+    setCiGraph(null)
+    setCiError(null)
     try {
       const data = await getAssessment(number, hoursValue)
       setAssessment(data)
@@ -67,6 +89,8 @@ export default function App() {
     <div className="shell">
       <TopBar onLookup={runLookup} loading={loading} theme={theme} onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} />
 
+      {assessment && <StatsRow assessment={assessment} />}
+
       <div className="main">
         <LeftPane assessment={assessment} />
 
@@ -97,20 +121,63 @@ export default function App() {
 
           {!loading && !error && assessment && (
             <>
-              <RadialView assessment={assessment} />
-              <BottomBar
-                assessment={assessment}
-                onAccept={handleAccept}
-                onDeeper={handleDeeper}
-                onReject={handleReject}
-                posting={posting}
-                postResult={postResult}
-              />
+              <div className="tabbar">
+                <button className={'tab-btn' + (tab === 'radius' ? ' active' : '')} onClick={() => setTab('radius')}>Blast Radius Map</button>
+                <button className={'tab-btn' + (tab === 'ci' ? ' active' : '')} onClick={() => setTab('ci')}>
+                  CI Relationships<span className="tag">ServiceNow</span>
+                </button>
+              </div>
+
+              {tab === 'radius' && (
+                <>
+                  <RadialView assessment={assessment} />
+                  <BottomBar assessment={assessment} />
+                </>
+              )}
+
+              {tab === 'ci' && (
+                <>
+                  {ciLoading && (
+                    <div className="center-loading">
+                      <div className="spinner" />
+                      <div className="small">Fetching CI relationships from cmdb_rel_ci…</div>
+                    </div>
+                  )}
+                  {!ciLoading && ciError && (
+                    <div className="center-error">
+                      <div className="big">{ciError.code === 'no_ci' ? 'No configuration item on this incident' : ciError.code === 'servicenow_not_configured' ? 'ServiceNow not configured yet' : 'Could not load CI relationships'}</div>
+                      <div className="small">{ciError.message}</div>
+                    </div>
+                  )}
+                  {!ciLoading && !ciError && ciGraph && (
+                    <>
+                      <CiGraphView graph={ciGraph} />
+                      <div className="bottom" style={{ gridTemplateColumns: '1fr' }}>
+                        <div>
+                          <div className="card-label">Source</div>
+                          <div className="small" style={{ color: 'var(--text-2)', fontSize: 12 }}>
+                            {ciGraph.nodes.length} configuration item(s) and {ciGraph.edges.length} relationship(s), fetched live from ServiceNow's <code>cmdb_ci</code> and <code>cmdb_rel_ci</code> tables for <strong>{ciGraph.root_label}</strong> — the same data behind ServiceNow's own CI relationship map.
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
             </>
           )}
         </div>
 
-        {assessment ? <AssessmentPanel assessment={assessment} /> : <div className="pane right" />}
+        {assessment ? (
+          <AssessmentPanel
+            assessment={assessment}
+            onAccept={handleAccept}
+            onDeeper={handleDeeper}
+            onReject={handleReject}
+            posting={posting}
+            postResult={postResult}
+          />
+        ) : <div className="pane right" />}
       </div>
 
       {assessment && (
