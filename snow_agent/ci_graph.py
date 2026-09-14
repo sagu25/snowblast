@@ -19,12 +19,22 @@ def _dv(value) -> str:
     return value or ""
 
 
-def _ref(value) -> tuple[str, str]:
+def _ref(value) -> tuple[str, str, str]:
     """A reference field returned with sysparm_display_value=all -- pull
-    out (sys_id, display name)."""
+    out (sys_id, display name, table name). The table name comes from the
+    reference's `link` URL (.../table/<table>/<sys_id>), which is the
+    record's *actual* class (cmdb_ci_appl, cmdb_ci_service, ...) --
+    `cmdb_rel_ci` itself doesn't carry class info on parent/child, so
+    without this every related node would show as generic "cmdb_ci"."""
     if isinstance(value, dict):
-        return value.get("value") or "", value.get("display_value") or ""
-    return "", ""
+        sys_id = value.get("value") or ""
+        label = value.get("display_value") or ""
+        link = value.get("link") or ""
+        table = ""
+        if "/table/" in link:
+            table = link.split("/table/", 1)[1].split("/", 1)[0]
+        return sys_id, label, table
+    return "", "", ""
 
 
 def build_ci_graph(client: ServiceNowClient, ci_identifier: str) -> dict | None:
@@ -49,14 +59,14 @@ def build_ci_graph(client: ServiceNowClient, ci_identifier: str) -> dict | None:
     edges: list[dict] = []
 
     for rel in client.get_ci_relationships(root_id):
-        p_id, p_label = _ref(rel.get("parent"))
-        c_id, c_label = _ref(rel.get("child"))
+        p_id, p_label, p_class = _ref(rel.get("parent"))
+        c_id, c_label, c_class = _ref(rel.get("child"))
         rel_type = _dv(rel.get("type"))
 
         if p_id and p_id not in nodes:
-            nodes[p_id] = {"id": p_id, "label": p_label or p_id, "type": "cmdb_ci", "root": False}
+            nodes[p_id] = {"id": p_id, "label": p_label or p_id, "type": p_class or "cmdb_ci", "root": False}
         if c_id and c_id not in nodes:
-            nodes[c_id] = {"id": c_id, "label": c_label or c_id, "type": "cmdb_ci", "root": False}
+            nodes[c_id] = {"id": c_id, "label": c_label or c_id, "type": c_class or "cmdb_ci", "root": False}
         if p_id and c_id:
             edges.append({"source": p_id, "target": c_id, "label": rel_type or "related to"})
 
