@@ -189,3 +189,31 @@ class ServiceNowClient:
         assess/report flow at all -- this exists solely for
         seed_incidents.py to populate demo data in a dev instance."""
         return self._post("incident", fields)
+
+    def create_ci(self, table: str, fields: dict) -> dict:
+        """Create a configuration item directly in its own class table
+        (cmdb_ci_appl, cmdb_ci_db_instance, cmdb_ci_server, ...) so it
+        carries the right class in ServiceNow's CMDB -- not the generic
+        base cmdb_ci a plain POST to "cmdb_ci" would leave it as. Used
+        only by seed_cmdb.py to populate demo data."""
+        return self._post(table, fields)
+
+    def get_rel_type_sys_id(self, type_name: str) -> str | None:
+        """Look up a `cmdb_rel_type` record by its exact name, e.g.
+        "Depends on::Used by" -- both directions of a standard
+        relationship type already exist on a stock ServiceNow instance.
+        Used only by seed_cmdb.py."""
+        records = self._get(
+            "cmdb_rel_type",
+            {"sysparm_query": f"name={type_name}", "sysparm_fields": "sys_id", "sysparm_limit": 1},
+        )
+        if not records:
+            return None
+        sys_id = records[0].get("sys_id")
+        if isinstance(sys_id, dict):
+            return sys_id.get("value") or None
+        return sys_id or None
+
+    def create_ci_relationship(self, parent_sys_id: str, child_sys_id: str, type_sys_id: str) -> dict:
+        """Create one `cmdb_rel_ci` row. Used only by seed_cmdb.py."""
+        return self._post("cmdb_rel_ci", {"parent": parent_sys_id, "child": child_sys_id, "type": type_sys_id})
