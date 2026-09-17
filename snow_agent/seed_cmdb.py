@@ -14,19 +14,26 @@ Usage:
 
 Needs the same SERVICENOW_* environment variables as snow_main.py.
 
-Each CI is created directly in its own class table (cmdb_ci_appl,
-cmdb_ci_db_instance, cmdb_ci_server) so it shows up with the right class
+Safe to run against an instance that already has some of these CIs (e.g.
+seeded by ServiceNow's own demo data, or created by hand while exploring
+this tool): every CI is looked up by name first and reused if it already
+exists, so this never creates duplicates -- and every relationship is
+checked against cmdb_rel_ci before creating it, so re-running this script
+is a no-op the second time. It never touches the `incident` table, so
+running it has no effect on incidents you've already created.
+
+New CIs are created directly in their own class table (cmdb_ci_appl,
+cmdb_ci_db_instance, cmdb_ci_server) so they show up with the right class
 in ServiceNow's own CMDB Workspace map -- not as a generic "cmdb_ci"
-record, which is what produces the "unnamed" nodes the CI Relationships
-tab shows when the underlying data itself is generic/placeholder.
-Relationships are created in cmdb_rel_ci with the correct cmdb_rel_type
-looked up by name; "Depends on::Used by" and "Runs on::Runs" are both
-standard relationship types already present on a stock instance.
+record. Relationships are created in cmdb_rel_ci with the correct
+cmdb_rel_type looked up by name; "Depends on::Used by" and "Runs
+on::Runs" are both standard relationship types already present on a
+stock instance.
 
 The synthetic "CI-001" style IDs below are only used to wire up
-relationships within this script -- real records get real ServiceNow
-sys_ids on creation, and relationships are created against those, not the
-synthetic IDs.
+relationships within this script -- real records get looked up or
+created with real ServiceNow sys_ids, and relationships are created
+against those, not the synthetic IDs.
 """
 
 from __future__ import annotations
@@ -93,13 +100,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.dry_run:
-        print(f"Would create {len(CIS)} configuration item(s):")
+        print(f"Would ensure these {len(CIS)} configuration item(s) exist (reusing by name if already present):")
         for ci in CIS:
             print(f"  - {ci['name']} ({ci['class']})")
-        print(f"\nWould create {len(RELATIONSHIPS)} relationship(s):")
+        print(f"\nWould ensure these {len(RELATIONSHIPS)} relationship(s) exist (skipping any already in cmdb_rel_ci):")
         for parent, child, rel_type in RELATIONSHIPS:
             print(f"  - {parent} -> {child}  ({rel_type})")
-        print("\n(dry run -- nothing created)")
+        print("\n(dry run -- nothing created, no ServiceNow calls made, so existing-vs-new can't be shown here)")
         return 0
 
     try:
@@ -108,22 +115,33 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    print(f"Creating {len(CIS)} configuration items...\n")
+    print(f"Resolving {len(CIS)} configuration items (reusing any that already exist)...\n")
     sys_ids: dict[str, str] = {}
+    found, made = 0, 0
     for ci in CIS:
-        fields = {"name": ci["name"], "u_aliases": ci["aliases"]}
-        try:
-            record = client.create_ci(ci["class"], fields)
-        except ServiceNowError as exc:
-            print(f"  warning: create failed for {ci['name']} ({exc}); retrying without u_aliases")
-            record = client.create_ci(ci["class"], {"name": ci["name"]})
-        sys_id = _dv(record.get("sys_id"))
+        existing = client.get_ci(ci["name"])
+        if existing:
+            sys_id = _dv(existing.get("sys_id"))
+            existing_class = _dv(existing.get("sys_class_name")) or "?"
+            found += 1
+            print(f"  found existing {ci['name']} ({existing_class}) -> {sys_id}")
+        else:
+            fields = {"name": ci["name"], "u_aliases": ci["aliases"]}
+            try:
+                record = client.create_ci(ci["class"], fields)
+            except ServiceNowError as exc:
+                print(f"  warning: create failed for {ci['name']} ({exc}); retrying without u_aliases")
+                record = client.create_ci(ci["class"], {"name": ci["name"]})
+            sys_id = _dv(record.get("sys_id"))
+            made += 1
+            print(f"  created {ci['name']} ({ci['class']}) -> {sys_id}")
         sys_ids[ci["id"]] = sys_id
-        print(f"  created {ci['name']} ({ci['class']}) -> {sys_id}")
 
-    print(f"\nCreating {len(RELATIONSHIPS)} relationships...\n")
+    print(f"\n({found} already existed, {made} newly created)")
+
+    print(f"\nWiring up {len(RELATIONSHIPS)} relationships (skipping any that already exist)...\n")
     rel_type_cache: dict[str, str] = {}
-    created = 0
+    created, skipped = 0, 0
     for parent, child, rel_type in RELATIONSHIPS:
         if rel_type not in rel_type_cache:
             type_sys_id = client.get_rel_type_sys_id(rel_type)
@@ -134,10 +152,13 @@ def main(argv: list[str] | None = None) -> int:
         type_sys_id = rel_type_cache[rel_type]
         if not type_sys_id or parent not in sys_ids or child not in sys_ids:
             continue
+        if client.relationship_exists(sys_ids[parent], sys_ids[child], type_sys_id):
+            skipped += 1
+            continue
         client.create_ci_relationship(sys_ids[parent], sys_ids[child], type_sys_id)
         created += 1
 
-    print(f"  created {created}/{len(RELATIONSHIPS)} relationship(s)")
+    print(f"  created {created} relationship(s), {skipped} already existed")
     print(f"\n-> point an incident's Configuration Item at '{CIS[0]['name']}' (or any of the above) and open the CI Relationships tab")
     return 0
 

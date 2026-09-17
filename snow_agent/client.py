@@ -214,6 +214,17 @@ class ServiceNowClient:
             return sys_id.get("value") or None
         return sys_id or None
 
+    def relationship_exists(self, parent_sys_id: str, child_sys_id: str, type_sys_id: str) -> bool:
+        """True if this exact (parent, child, type) row already exists in
+        `cmdb_rel_ci` -- lets seed_cmdb.py be safely re-run without piling
+        up duplicate relationship rows each time."""
+        query = f"parent={parent_sys_id}^child={child_sys_id}^type={type_sys_id}"
+        records = self._get(
+            "cmdb_rel_ci",
+            {"sysparm_query": query, "sysparm_fields": "sys_id", "sysparm_limit": 1},
+        )
+        return bool(records)
+
     def create_ci_relationship(self, parent_sys_id: str, child_sys_id: str, type_sys_id: str) -> dict:
         """Create one `cmdb_rel_ci` row. Used only by seed_cmdb.py."""
         return self._post("cmdb_rel_ci", {"parent": parent_sys_id, "child": child_sys_id, "type": type_sys_id})
