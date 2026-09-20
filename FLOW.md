@@ -131,12 +131,13 @@ the real report and useful for a 10-second look without booting anything.
                         ┌────────┴────────┐
                         │   snow_agent/    │
                         │                  │
-                        │  client.py       │  ServiceNow HTTP calls
+                        │  client.py       │  ServiceNow HTTP calls (incident + cmdb_ci/cmdb_rel_ci)
                         │  models.py       │  raw JSON -> Incident objects
                         │  correlate.py    │  the 8-step scoring engine (deterministic)
                         │  report.py       │  Incident data -> JSON/text/work-note
                         │  narrate.py      │  optional: LLM narration + chat
                         │  llm_client.py   │  builds the Azure OpenAI client
+                        │  ci_graph.py     │  builds a 1-hop CI relationship graph (nodes+edges)
                         └────────┬─────────┘
                                  │
                   ┌──────────────┴──────────────┐
@@ -151,6 +152,19 @@ the real report and useful for a 10-second look without booting anything.
 Two front doors, one engine. The CLI and the web UI both call the exact
 same `correlate.py` / `report.py` functions — nothing is reimplemented
 between them. If they ever disagree on a number, that's a bug.
+
+There are two independent data views built on the same ServiceNow
+instance, and it matters that you keep them mentally separate:
+
+1. **Blast Radius correlation** (`correlate.py`) — works entirely off
+   the `incident` table. Explicitly does **not** need a CMDB — that's
+   the whole point of the design (see Part 5, "why not use the CMDB").
+2. **CI Relationships** (`ci_graph.py`) — a separate tab in the UI that
+   *does* read the CMDB (`cmdb_ci` / `cmdb_rel_ci`), to answer a
+   different question: "what else is technically connected to this
+   incident's configuration item?" This was added later, sits next to
+   the correlation feature, and never feeds into its scoring — a CI
+   graph edge never changes a confidence number.
 
 ### What happens on one lookup
 
@@ -178,6 +192,32 @@ a result that already exists.
 `seed_incidents.py` sits outside this flow entirely — a separate,
 one-time utility that creates incidents via `client.create_incident()`,
 a write path `assess()` never touches.
+
+### What happens on the CI Relationships tab (separate feature)
+
+This is a second, independent path through the same UI — it runs
+alongside the Blast Radius flow above, not as part of it.
+
+| # | Step | Where | What it actually does |
+|---|------|-------|------------------------|
+| 1 | User clicks the "CI Relationships" tab | `App.jsx` | Defaults to the trigger incident's own `cmdb_ci` field, if it has one |
+| 2 | Look up the CI | `client.get_ci()` | GET against `cmdb_ci` by sys_id or name |
+| 3 | Fetch relationships | `client.get_ci_relationships()` | GET `cmdb_rel_ci` rows where the CI is parent or child |
+| 4 | Resolve real classes | `ci_graph._ref()` | Pulls each related record's actual class (`cmdb_ci_appl`, `cmdb_ci_db_instance`, ...) off the reference field's link URL — without this every node would show as a generic "cmdb_ci" |
+| 5 | Build the graph | `ci_graph.build_ci_graph()` | Returns one hop of nodes + edges from the root CI — no multi-hop traversal, no layout math (that's the frontend's job) |
+| 6 | Render | `CiGraphView.jsx` | Draws the graph |
+| 7 | *(optional)* Browse any CI | `GET /api/ci` → `CiList.jsx` | Full searchable CMDB browser, for when the incident's own `cmdb_ci` field is blank, free text, or stale — a common real-world case this replaced a hard failure for |
+| 8 | *(optional)* Re-root the graph | `GET /api/ci/<id>/graph` | Picking any CI from the browser re-draws the graph rooted there, decoupled from the original incident |
+
+`seed_cmdb.py` is the CMDB equivalent of `seed_incidents.py` — a
+one-time, idempotent utility (safe to re-run; it looks up CIs/relationships
+by name first and reuses them) that creates 15 configuration items and 22
+relationships across realistic ServiceNow CI classes, so this tab has
+real data to show on a fresh instance. `debug_ci.py` is a pure diagnostic
+(`python -m snow_agent.debug_ci <ci_sys_id_or_name>`) that dumps the raw
+`cmdb_ci` / `cmdb_rel_ci` JSON for one CI, for when the graph doesn't
+match what ServiceNow's own CMDB Workspace map shows. Neither script
+touches the `incident` table or the correlation engine.
 
 ---
 
@@ -216,8 +256,12 @@ a write path `assess()` never touches.
 > own — it only ever proposes a work note back to ServiceNow, and only
 > after a person explicitly approves it.
 >
-> No CMDB, no dependency graph to maintain — it works off ServiceNow data
-> that already exists.
+> The correlation itself needs no CMDB — it works off ServiceNow incident
+> data that already exists. There's a separate CI Relationships tab that
+> *does* read the CMDB, for when you specifically want to see what's
+> technically connected to the incident's configuration item — but that's
+> an optional, additional view, not something the correlation score
+> depends on.
 
 ### The leadership version (outcome first, mechanism second)
 
@@ -280,7 +324,13 @@ to chance in front of an audience.
    created seconds ago and the agent independently found it belongs with
    the earlier ones, purely by scoring, with nothing pre-told.
 7. Optional: click **Narrate** for the plain-English summary.
-8. Optional, strongest closer: **Accept** → confirm → it posts a real
+8. Optional: click the **CI Relationships** tab to show the live
+   dependency graph pulled from `cmdb_ci`/`cmdb_rel_ci` — run
+   `python -m snow_agent.seed_cmdb` beforehand so there's real data to
+   show, and set the seeded incident's Configuration Item field to one of
+   the seeded CIs (e.g. "Expense Management System") so the tab has
+   something to root on.
+9. Optional, strongest closer: **Accept** → confirm → it posts a real
    work note to ServiceNow → flip back to the ServiceNow tab, refresh,
    show the note actually sitting there. Proves the write-back is real.
 
@@ -300,9 +350,14 @@ to chance in front of an audience.
   `SERVICENOW_*` environment variables are set; otherwise every entry
   point fails with an honest "not configured" message, never a fake
   answer.
-- **"Why not use the CMDB / a dependency graph?"** — No CMDB required by
-  design; it works off ServiceNow incident data that already exists,
-  rather than a graph that has to be built and kept up to date.
+- **"Why not use the CMDB / a dependency graph?"** — The correlation math
+  doesn't require one by design; it works off ServiceNow incident data
+  that already exists, rather than a graph that has to be built and kept
+  up to date. That said, the UI does have a separate "CI Relationships"
+  tab that reads the real CMDB (`cmdb_ci`/`cmdb_rel_ci`) when you
+  specifically want to see technical dependencies around an incident's
+  configuration item — it's an additional view, and it never feeds back
+  into the confidence score.
 - **"Is this permanent?"** — No — it's a stand-in, expected to be
   replaced by a native agent on the Blueverse LTM platform. The UI and
   report format are kept decoupled from this backend specifically so

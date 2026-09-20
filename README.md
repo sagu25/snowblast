@@ -190,6 +190,30 @@ Mirrors the reference prototype's 8-step method, but for real:
    own; `--post-note` / the UI's Accept button both require an explicit
    confirmation before writing anything back.
 
+## CI Relationships (separate feature, reads the real CMDB)
+
+The correlation engine above deliberately avoids the CMDB. Alongside it,
+the web UI has a second, independent tab — **CI Relationships** — that
+*does* read ServiceNow's `cmdb_ci`/`cmdb_rel_ci` tables, for a different
+question: "what's technically connected to this incident's configuration
+item?" A CI graph edge never feeds back into the correlation score.
+
+- `ci_graph.py` fetches the incident's `cmdb_ci`, then every relationship
+  one hop out (parent or child), resolving each related record's real
+  class off its reference link so nodes don't all render as generic
+  "cmdb_ci".
+- If the incident's own `cmdb_ci` is blank, free text, or stale (common
+  in practice), the tab falls back to a full searchable CI browser
+  (`GET /api/ci`, `CiList.jsx`) instead of hard-failing — pick any CI to
+  root the graph there instead.
+- `python -m snow_agent.seed_cmdb` seeds 15 realistic configuration items
+  and 22 relationships so this tab has real data on a fresh instance.
+  It's idempotent — safe to re-run, it looks up existing CIs/relationships
+  by name first — and never touches the `incident` table.
+- `python -m snow_agent.debug_ci <ci_sys_id_or_name>` dumps the raw
+  `cmdb_ci`/`cmdb_rel_ci` JSON for one CI, for when the rendered graph
+  doesn't match ServiceNow's own CMDB Workspace map.
+
 ## Troubleshooting
 
 - **`error: set SERVICENOW_INSTANCE_URL, ...`** — see section 1; none of
@@ -236,19 +260,22 @@ snow_main.py          CLI entry point
 api.py                  Flask API for the React UI (thin wrapper, no logic)
 requirements.txt
 snow_agent/
-  client.py         ServiceNow Table API wrapper (GET/POST/PATCH, Basic Auth)
+  client.py         ServiceNow Table API wrapper (GET/POST/PATCH, Basic Auth; incident + cmdb_ci/cmdb_rel_ci)
   models.py          Incident / MatchedIncident / BlastRadiusAssessment
   correlate.py         the deterministic 8-step correlation engine
   report.py             text / JSON / work-note rendering
   narrate.py              LLM narration + grounded chat (Azure OpenAI)
   llm_client.py             builds the Azure OpenAI client
+  ci_graph.py                builds a 1-hop CI relationship graph from cmdb_ci/cmdb_rel_ci
   cli.py                      argument parsing
   seed_incidents.py             creates demo incident clusters for a fresh instance
-  ui-mockup.html                  static UI mockup (no backend), see section 5
+  seed_cmdb.py                    creates demo CIs + relationships for the CI Relationships tab (idempotent)
+  debug_ci.py                       dumps raw cmdb_ci/cmdb_rel_ci JSON for one CI
+  ui-mockup.html                      static UI mockup (no backend), see section 5
 web/                    the real React app, wired to api.py (section 4)
   vite.config.js          dev-server proxy to api.py
   src/
-    App.jsx                 top-level state: lookup, assessment, theme, chat
+    App.jsx                 top-level state: lookup, assessment, theme, chat, CI tab
     api.js                    fetch wrapper, typed ApiError on non-2xx
     components/
       TopBar.jsx                incident-number lookup, hours window, theme
@@ -257,4 +284,6 @@ web/                    the real React app, wired to api.py (section 4)
       AssessmentPanel.jsx            confidence, matches, narrate button
       BottomBar.jsx                    step timeline, log, analyst actions
       ChatPanel.jsx                      Ask Blast Radius, grounded chat
+      CiGraphView.jsx                      CI Relationships tab: the dependency graph
+      CiList.jsx                             searchable CMDB browser (pick any CI to re-root the graph)
 ```
